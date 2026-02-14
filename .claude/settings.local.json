@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git checkout:*)",
+      "WebFetch(domain:rtg.arcium.com)",
+      "WebSearch",
+      "WebFetch(domain:ts.arcium.com)",
+      "WebFetch(domain:docs.arcium.com)",
+      "WebFetch(domain:github.com)"
+    ]
+  }
+}

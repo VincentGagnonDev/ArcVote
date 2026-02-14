@@ -13,12 +13,17 @@ mod circuits {
         total_votes: u64,
     }
 
-    /// A single voter's encrypted choice (0-3).
-    pub struct VoterChoice {
-        choice: u8,
+    /// A voter's quadratic credit allocation across options.
+    /// Each field is the number of effective votes for that option.
+    /// Quadratic cost: v0² + v1² + v2² + v3² must be ≤ 100 voice credits.
+    pub struct VoteAllocation {
+        v0: u64,
+        v1: u64,
+        v2: u64,
+        v3: u64,
     }
 
-    /// Initialize all counters to zero.
+    /// Initialize all vote counters to zero.
     #[instruction]
     pub fn init_tallies(mxe: Mxe) -> Enc<Mxe, VoteTallies> {
         let tallies = VoteTallies {
@@ -31,36 +36,40 @@ mod circuits {
         mxe.from_arcis(tallies)
     }
 
-    /// Cast a vote — increment the chosen option's counter.
-    /// The individual vote value is never revealed.
+    /// Cast a quadratic vote.
+    ///
+    /// The MPC cluster computes v0² + v1² + v2² + v3² and only counts the
+    /// vote if the total cost ≤ 100 voice credits.  Individual allocations
+    /// are never revealed — only aggregated tallies.
+    ///
+    /// MPC executes both branches of the budget check (no information leakage).
     #[instruction]
     pub fn cast_vote(
-        vote_ctxt: Enc<Shared, VoterChoice>,
+        alloc_ctxt: Enc<Shared, VoteAllocation>,
         tallies_ctxt: Enc<Mxe, VoteTallies>,
     ) -> Enc<Mxe, VoteTallies> {
-        let vote = vote_ctxt.to_arcis();
+        let alloc = alloc_ctxt.to_arcis();
         let mut tallies = tallies_ctxt.to_arcis();
 
-        // MPC executes all branches — no information leakage
-        if vote.choice == 0u8 {
-            tallies.option_0 += 1;
-        }
-        if vote.choice == 1u8 {
-            tallies.option_1 += 1;
-        }
-        if vote.choice == 2u8 {
-            tallies.option_2 += 1;
-        }
-        if vote.choice == 3u8 {
-            tallies.option_3 += 1;
-        }
+        // Quadratic cost — sum of squares
+        let cost = alloc.v0 * alloc.v0
+                 + alloc.v1 * alloc.v1
+                 + alloc.v2 * alloc.v2
+                 + alloc.v3 * alloc.v3;
 
-        tallies.total_votes += 1;
+        // Budget enforcement inside MPC
+        if cost <= 100u64 {
+            tallies.option_0 += alloc.v0;
+            tallies.option_1 += alloc.v1;
+            tallies.option_2 += alloc.v2;
+            tallies.option_3 += alloc.v3;
+            tallies.total_votes += alloc.v0 + alloc.v1 + alloc.v2 + alloc.v3;
+        }
 
         tallies_ctxt.owner.from_arcis(tallies)
     }
 
-    /// Revealed results with all counts and winner index.
+    /// Plaintext results returned after reveal.
     pub struct RevealedResults {
         option_0: u64,
         option_1: u64,
